@@ -32,6 +32,50 @@
       position: relative;
     }
 
+    .mode-bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 8px 2px 7px;
+      font-size: 1.4rem;
+      line-height: 1;
+      border-radius: 12px;
+      background: #eef2f7;
+      color: #475569;
+      box-shadow: 0 3px #cbd5e1;
+    }
+
+    .mode-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px #cbd5e1;
+    }
+
+    .mode-btn.active {
+      background: #3b82f6;
+      color: #fff;
+      box-shadow: 0 3px #2563eb;
+    }
+
+    .mode-btn.active:active {
+      box-shadow: 0 1px #2563eb;
+    }
+
+    .mode-txt {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
     .status-bar {
       display: flex;
       justify-content: space-between;
@@ -46,6 +90,14 @@
     .lives {
       font-size: 1.4rem;
       letter-spacing: 2px;
+    }
+
+    .record-line {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      font-weight: 700;
+      margin: -4px 4px 10px;
+      text-align: center;
     }
 
     .badges {
@@ -161,6 +213,10 @@
       color: #ea580c;
     }
 
+    .record-new {
+      color: #ca8a04;
+    }
+
     .game-over-modal {
       display: none;
       position: absolute;
@@ -211,6 +267,13 @@
 <body>
 
   <div class="card">
+    <div class="mode-bar" id="modeBar">
+      <button class="mode-btn active" data-mode="×" onclick="elegirModo('×')"><span class="mode-sym">×</span><span class="mode-txt">Multiplicar</span></button>
+      <button class="mode-btn" data-mode="+" onclick="elegirModo('+')"><span class="mode-sym">+</span><span class="mode-txt">Sumar</span></button>
+      <button class="mode-btn" data-mode="-" onclick="elegirModo('-')"><span class="mode-sym">-</span><span class="mode-txt">Restar</span></button>
+      <button class="mode-btn" data-mode="÷" onclick="elegirModo('÷')"><span class="mode-sym">÷</span><span class="mode-txt">Dividir</span></button>
+    </div>
+
     <div class="status-bar">
       <div class="lives" id="lives">❤️❤️❤️</div>
       <div class="badges">
@@ -220,9 +283,11 @@
       </div>
     </div>
 
+    <div class="record-line">🏆 Máxima puntuación <span id="recordMode">×</span>: <span id="record">0</span></div>
+
     <div class="question">
       <span id="n1">0</span>
-      <span>×</span>
+      <span id="opSign">×</span>
       <span id="n2">0</span>
     </div>
 
@@ -253,12 +318,14 @@
   </div>
 
   <script>
+    let mode = "×"; // operación activa: × (multiplicar), + (sumar), - (restar), ÷ (dividir)
     let num1 = 0;
     let num2 = 0;
     let currentVal = "";
     let lives = 3;
     let score = 0;
     let streak = 0;
+    let record = 0; // máxima puntuación (se guarda entre partidas)
     let totalAciertos = 0; // aciertos acumulados: nunca baja (marca la dificultad)
     let busy = false; // bloquea dobles pulsaciones mientras hay feedback
     let pendingTimer = null;
@@ -299,40 +366,146 @@
       document.getElementById("streak").textContent = streak;
     }
 
-    function newOperation() {
-      updateLevelBadge();
+    // Un récord (mejor puntuación) por cada tipo de operación
+    const CLAVE_RECORD = {
+      "×": "multi_max_puntuacion",
+      "+": "suma_max_puntuacion",
+      "-": "resta_max_puntuacion",
+      "÷": "division_max_puntuacion"
+    };
 
-      if (failedQueue.length > 0 && Math.random() < 0.35) {
-        const pair = failedQueue.shift();
-        num1 = pair[0];
-        num2 = pair[1];
-      } else {
+    function loadRecord(m) {
+      try {
+        const v = parseInt(localStorage.getItem(CLAVE_RECORD[m]), 10);
+        return Number.isFinite(v) && v > 0 ? v : 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function saveRecord() {
+      try {
+        localStorage.setItem(CLAVE_RECORD[mode], String(record));
+      } catch (e) {
+        /* sin almacenamiento disponible: el récord dura solo la sesión */
+      }
+    }
+
+    function renderRecord() {
+      document.getElementById("record").textContent = record;
+      document.getElementById("recordMode").textContent = mode;
+    }
+
+    // Nivel de dificultad según aciertos acumulados (nunca baja)
+    function nivelDificultad() {
+      if (totalAciertos < 5) return 0;
+      if (totalAciertos < 10) return 1;
+      if (totalAciertos < 20) return 2;
+      return 3;
+    }
+
+    // Devuelve una operación {a, b} del modo activo: "a op b = resultado"
+    function generarOperacion() {
+      const n = nivelDificultad();
+
+      // Multiplicación: tablas (mismo comportamiento que siempre)
+      if (mode === "×") {
         let f1, f2;
-        if (totalAciertos < 5) {
-          f1 = randomInt(0, 10);
-          f2 = randomInt(0, 10);
-        } else if (totalAciertos < 10) {
+        if (n === 0) {
+          f1 = randomInt(0, 10); f2 = randomInt(0, 10);
+        } else if (n === 1) {
           f1 = getAdaptiveFactor(0.60, 5, 2, 4);
           f2 = getAdaptiveFactor(0.40, 5, 2, 4);
-        } else if (totalAciertos < 20) {
+        } else if (n === 2) {
           f1 = getAdaptiveFactor(0.75, 6, 2, 5);
           f2 = getAdaptiveFactor(0.50, 6, 2, 5);
         } else {
           f1 = getAdaptiveFactor(0.85, 6, 3, 5);
           f2 = getAdaptiveFactor(0.70, 6, 3, 5);
         }
-
-        if (Math.random() < 0.5) {
-          num1 = f1; num2 = f2;
-        } else {
-          num1 = f2; num2 = f1;
-        }
+        return Math.random() < 0.5 ? { a: f1, b: f2 } : { a: f2, b: f1 };
       }
 
+      // Suma y resta: números de 0 a 100 según el nivel
+      if (mode === "+" || mode === "-") {
+        const tope = [10, 30, 60, 100][n];
+        if (mode === "+") {
+          return { a: randomInt(0, tope), b: randomInt(0, tope) };
+        }
+        // Resta con resultado siempre >= 0
+        const a = randomInt(0, tope);
+        for (let i = 0; i < 5; i++) {
+          const b = randomInt(0, a);
+          if (n < 2 || (a - b !== 0 && a - b !== a)) {
+            return { a: a, b: b };
+          }
+        }
+        return { a: a, b: randomInt(0, a) };
+      }
+
+      // División entera: dividendo = divisor x cociente (respuesta = cociente)
+      const divisor = randomInt([2, 2, 2, 2][n], [5, 7, 9, 10][n]);
+      const cociente = randomInt([1, 2, 2, 4][n], [5, 8, 10, 10][n]);
+      return { a: divisor * cociente, b: divisor };
+    }
+
+    // Resultado correcto de la operación actual
+    function resolverResultado() {
+      if (mode === "×") return num1 * num2;
+      if (mode === "+") return num1 + num2;
+      if (mode === "-") return num1 - num2; // la resta siempre se genera >= 0
+      return num1 / num2; // la división siempre se genera entera
+    }
+
+    function newOperation() {
+      updateLevelBadge();
+
+      // Repaso de fallos del modo activo
+      if (failedQueue.length > 0 && failedQueue[0].m === mode && Math.random() < 0.35) {
+        const item = failedQueue.shift();
+        num1 = item.a;
+        num2 = item.b;
+      } else {
+        const op = generarOperacion();
+        num1 = op.a;
+        num2 = op.b;
+      }
+
+      document.getElementById("opSign").textContent = mode;
       document.getElementById("n1").textContent = num1;
       document.getElementById("n2").textContent = num2;
       currentVal = "";
       updateDisplay();
+    }
+
+    // Cambiar de operación: partida nueva y récord propio de ese modo
+    function elegirModo(m) {
+      if (m === mode) return;
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+      busy = false;
+      mode = m;
+
+      const botones = document.querySelectorAll(".mode-bar button");
+      for (const btn of botones) {
+        btn.classList.toggle("active", btn.dataset.mode === m);
+      }
+
+      lives = 3;
+      score = 0;
+      streak = 0;
+      totalAciertos = 0;
+      failedQueue.length = 0;
+      record = loadRecord(mode);
+
+      renderScore();
+      renderLives();
+      renderStreak();
+      updateLevelBadge();
+      renderRecord();
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("gameOverModal").classList.remove("show");
+      newOperation();
     }
 
     function addNum(val) {
@@ -358,7 +531,7 @@
 
       const feedback = document.getElementById("feedback");
       const result = parseInt(currentVal, 10);
-      const expected = num1 * num2;
+      const expected = resolverResultado();
 
       // Limpia la respuesta al momento para evitar reenvíos con pulsaciones rápidas
       currentVal = "";
@@ -372,6 +545,13 @@
         renderStreak();
         updateLevelBadge();
 
+        const nuevoRecord = score > record;
+        if (nuevoRecord) {
+          record = score;
+          saveRecord();
+          renderRecord();
+        }
+
         let msg, cls;
         if (streak % 10 === 0) {
           if (lives < MAX_LIVES) {
@@ -384,8 +564,8 @@
             cls = "feedback correct";
           }
         } else {
-          msg = "¡Muy bien! 🎉";
-          cls = "feedback correct";
+          msg = nuevoRecord ? "¡Nuevo récord! 🏆" : "¡Muy bien! 🎉";
+          cls = nuevoRecord ? "feedback record-new" : "feedback correct";
         }
         feedback.textContent = msg;
         feedback.className = cls;
@@ -407,7 +587,7 @@
         renderLives();
         renderStreak();
         renderScore();
-        failedQueue.push([num1, num2]);
+        failedQueue.push({ m: mode, a: num1, b: num2 });
 
         if (lives <= 0) {
           feedback.textContent = `Era ${expected} 😅`;
@@ -447,9 +627,11 @@
       newOperation();
     }
 
+    record = loadRecord(mode);
     renderLives();
     renderStreak();
     renderScore();
+    renderRecord();
     newOperation();
   </script>
 </body>
