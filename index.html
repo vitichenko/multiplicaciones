@@ -1,114 +1,457 @@
-const fs = require("fs");
-const src = fs.readFileSync("/home/victor/Proyectos/multi/index.html", "utf8");
-const m = src.match(/<script>([\s\S]*?)<\/script>/);
-if (!m) throw new Error("no script");
+<!DOCTYPE html>
+<html lang="es">
 
-function makeEl() {
-  const s = new Set();
-  return {
-    textContent: "",
-    className: "",
-    classList: {
-      add(c) { s.add(c); },
-      remove(c) { s.delete(c); },
-      contains(c) { return s.has(c); }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aprende a Multiplicar</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, sans-serif;
     }
-  };
-}
-const ids = ["n1", "n2", "lives", "score", "streak", "level", "display", "feedback", "finalScore", "gameOverModal"];
-const els = {};
-for (const id of ids) els[id] = makeEl();
-global.document = { getElementById: (id) => els[id] };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const sleepMs = 900;
-let ok = 0, fail = 0;
-const assert = (cond, msg) => {
-  if (cond) { ok++; console.log("  OK  " + msg); }
-  else { fail++; console.error("  FAIL " + msg); }
-};
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #f0f4f8;
+      touch-action: manipulation;
+    }
 
-const tests = `
-function setQ(a, b) { num1 = a; num2 = b; }
-function answer(v) { currentVal = String(v); updateDisplay(); }
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 24px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      position: relative;
+    }
 
-(async () => {
-  resetGame();
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
 
-  // --- A: acierto suma punto y racha; doble pulso bloqueado
-  setQ(2, 3); answer(6);
-  checkAnswer();
-  assert(score === 1 && streak === 1 && totalAciertos === 1, "A: acierto suma +1 punto, +1 racha y +1 acierto acumulado");
-  const sA = score, stA = streak;
-  checkAnswer();
-  assert(score === sA && streak === stA, "A: doble pulso tras acierto NO vuelve a puntuar (bloqueo busy)");
-  await sleep(${sleepMs});
+    .lives {
+      font-size: 1.4rem;
+      letter-spacing: 2px;
+    }
 
-  // --- B: racha 10 -> +1 vida
-  lives = 3; score = 0; streak = 9; totalAciertos = 9;
-  setQ(2, 3); answer(6);
-  checkAnswer();
-  assert(lives === 4, "B: racha de 10 aciertos seguidos suma 1 vida (3 -> 4)");
-  assert(streak === 10 && totalAciertos === 10, "B: racha llega a 10 y aciertos acumulados a 10");
-  assert(els.feedback.textContent.includes("+1 Vida extra"), "B: muestra mensaje de vida extra");
-  await sleep(${sleepMs});
+    .badges {
+      display: flex;
+      gap: 6px;
+    }
 
-  // --- C: tope de 5 vidas
-  lives = 5; streak = 9; totalAciertos = 10;
-  setQ(3, 4); answer(12);
-  checkAnswer();
-  assert(lives === 5, "C: con tope de 5 vidas no suma más (sigue en 5)");
-  assert(els.feedback.textContent.includes("Imparable"), "C: con tope muestra 'Imparable'");
-  await sleep(${sleepMs});
+    .score-badge,
+    .level-badge,
+    .streak-badge {
+      background: #e2e8f0;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
 
-  // --- D: fallo quita vida y divide puntos por 2; doble pulso no resta 2 vidas
-  score = 10; lives = 3; streak = 0; totalAciertos = 10;
-  setQ(2, 3); answer(7);
-  checkAnswer();
-  assert(lives === 2, "D: fallo quita 1 vida (3 -> 2)");
-  assert(score === 5, "D: fallo divide puntos por 2 (10 -> 5)");
-  assert(streak === 0, "D: fallo resetea la racha");
-  assert(els.feedback.textContent.includes("Era 6") && els.feedback.textContent.includes("-5"), "D: muestra respuesta correcta y penalización");
-  const livesD = lives;
-  checkAnswer();
-  assert(lives === livesD, "D: doble pulso tras fallo NO quita otra vida (bloqueo busy)");
-  await sleep(1400);
+    .level-badge {
+      background: #fef3c7;
+      color: #b45309;
+    }
 
-  // --- E: fallo con 0 puntos no muestra "-0⭐"
-  score = 0; lives = 3; totalAciertos = 12;
-  setQ(4, 5); answer(3);
-  checkAnswer();
-  assert(score === 0, "E: fallo con 0 puntos deja 0 (no negativos)");
-  assert(els.feedback.textContent === "Era 20 (-1❤️)", "E: mensaje sin '-0⭐' feo");
-  await sleep(1400);
+    .streak-badge {
+      background: #ffedd5;
+      color: #c2410c;
+    }
 
-  // --- F: reset cancela el temporizador de fin de partida
-  lives = 1; score = 8; totalAciertos = 12;
-  setQ(5, 5); answer(0);
-  checkAnswer();
-  assert(lives === 0, "F: último fallo deja 0 vidas");
-  resetGame();
-  await sleep(1200);
-  assert(!els.gameOverModal.classList.contains("show"), "F: reiniciar cancela el fin de partida pendiente");
-  assert(lives === 3 && busy === false && totalAciertos === 0, "F: reset restaura vidas, desbloquea y pone aciertos a 0");
+    .question {
+      font-size: 2.8rem;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 10px 0 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+    }
 
-  // --- G: fin de partida real al llegar a 0 vidas
-  lives = 1; score = 0; streak = 0; totalAciertos = 0;
-  setQ(6, 6); answer(5);
-  checkAnswer();
-  assert(els.feedback.textContent.includes("Era 36"), "G: último fallo muestra la respuesta correcta");
-  await sleep(1100);
-  assert(els.gameOverModal.classList.contains("show"), "G: aparece el modal de fin de partida");
-  assert(els.finalScore.textContent == score, "G: modal muestra la puntuación final");
+    .answer-box {
+      font-size: 2.2rem;
+      font-weight: 700;
+      min-height: 56px;
+      background: #f8fafc;
+      border: 3px solid #cbd5e1;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+      color: #0f172a;
+    }
 
-  // --- H: dificultad por aciertos acumulados aunque el score sea 0
-  score = 0; totalAciertos = 25;
-  updateLevelBadge();
-  assert(els.level.textContent.includes("Pro"), "H: nivel 'Pro' según aciertos acumulados aunque score sea 0");
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
 
-  console.log("\\nRESULTADO: " + ok + " OK, " + fail + " FAIL");
-  process.exit(fail > 0 ? 1 : 0);
-})();
-`;
+    button {
+      font-size: 1.6rem;
+      font-weight: 600;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      background: #e2e8f0;
+      color: #334155;
+      cursor: pointer;
+      box-shadow: 0 4px #cbd5e1;
+      user-select: none;
+    }
 
-eval(m[1] + "\n" + tests);
+    button:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px #cbd5e1;
+    }
+
+    button.clear {
+      background: #fee2e2;
+      color: #dc2626;
+      box-shadow: 0 4px #fca5a5;
+    }
+
+    button.clear:active {
+      box-shadow: 0 1px #fca5a5;
+    }
+
+    button.check {
+      background: #dcfce7;
+      color: #16a34a;
+      box-shadow: 0 4px #86efac;
+    }
+
+    button.check:active {
+      box-shadow: 0 1px #86efac;
+    }
+
+    .feedback {
+      height: 28px;
+      margin-top: 14px;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .correct {
+      color: #16a34a;
+    }
+
+    .incorrect {
+      color: #dc2626;
+    }
+
+    .bonus {
+      color: #ea580c;
+    }
+
+    .game-over-modal {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: white;
+      border-radius: 24px;
+      padding: 24px;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .game-over-modal.show {
+      display: flex;
+    }
+
+    .game-over-modal h2 {
+      margin: 0;
+      font-size: 2rem;
+      color: #dc2626;
+    }
+
+    .game-over-modal p {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #475569;
+    }
+
+    .btn-restart {
+      background: #3b82f6;
+      color: white;
+      box-shadow: 0 4px #2563eb;
+      padding: 14px 28px;
+      font-size: 1.2rem;
+      margin-top: 8px;
+    }
+
+    .btn-restart:active {
+      box-shadow: 0 1px #2563eb;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="card">
+    <div class="status-bar">
+      <div class="lives" id="lives">❤️❤️❤️</div>
+      <div class="badges">
+        <span class="streak-badge" id="streakBadge">🔥 <span id="streak">0</span></span>
+        <span class="level-badge" id="level">Nvl 1</span>
+        <span class="score-badge">⭐ <span id="score">0</span></span>
+      </div>
+    </div>
+
+    <div class="question">
+      <span id="n1">0</span>
+      <span>×</span>
+      <span id="n2">0</span>
+    </div>
+
+    <div class="answer-box" id="display"></div>
+
+    <div class="grid">
+      <button onclick="addNum('1')">1</button>
+      <button onclick="addNum('2')">2</button>
+      <button onclick="addNum('3')">3</button>
+      <button onclick="addNum('4')">4</button>
+      <button onclick="addNum('5')">5</button>
+      <button onclick="addNum('6')">6</button>
+      <button onclick="addNum('7')">7</button>
+      <button onclick="addNum('8')">8</button>
+      <button onclick="addNum('9')">9</button>
+      <button class="clear" onclick="clearInput()">✕</button>
+      <button onclick="addNum('0')">0</button>
+      <button class="check" onclick="checkAnswer()">✓</button>
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <div class="game-over-modal" id="gameOverModal">
+      <h2>¡Fin de la partida! 💔</h2>
+      <p>Has conseguido <b id="finalScore">0</b> puntos.</p>
+      <button class="btn-restart" onclick="resetGame()">Jugar otra vez 🔁</button>
+    </div>
+  </div>
+
+  <script>
+    let num1 = 0;
+    let num2 = 0;
+    let currentVal = "";
+    let lives = 3;
+    let score = 0;
+    let streak = 0;
+    let totalAciertos = 0; // aciertos acumulados: nunca baja (marca la dificultad)
+    let busy = false; // bloquea dobles pulsaciones mientras hay feedback
+    let pendingTimer = null;
+    const MAX_LIVES = 5;
+    const failedQueue = [];
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function getAdaptiveFactor(probHigh, minHigh, minLow, maxLow) {
+      if (Math.random() < probHigh) {
+        return randomInt(minHigh, 10);
+      } else {
+        return randomInt(minLow, maxLow);
+      }
+    }
+
+    function updateLevelBadge() {
+      const levelEl = document.getElementById("level");
+      if (totalAciertos < 5) levelEl.textContent = "Nvl 1";
+      else if (totalAciertos < 10) levelEl.textContent = "Nvl 2";
+      else if (totalAciertos < 20) levelEl.textContent = "Nvl 3";
+      else levelEl.textContent = "Pro 🔥";
+    }
+
+    function renderLives() {
+      let hearts = "";
+      for (let i = 0; i < lives; i++) hearts += "❤️";
+      document.getElementById("lives").textContent = hearts;
+    }
+
+    function renderScore() {
+      document.getElementById("score").textContent = score;
+    }
+
+    function renderStreak() {
+      document.getElementById("streak").textContent = streak;
+    }
+
+    function newOperation() {
+      updateLevelBadge();
+
+      if (failedQueue.length > 0 && Math.random() < 0.35) {
+        const pair = failedQueue.shift();
+        num1 = pair[0];
+        num2 = pair[1];
+      } else {
+        let f1, f2;
+        if (totalAciertos < 5) {
+          f1 = randomInt(0, 10);
+          f2 = randomInt(0, 10);
+        } else if (totalAciertos < 10) {
+          f1 = getAdaptiveFactor(0.60, 5, 2, 4);
+          f2 = getAdaptiveFactor(0.40, 5, 2, 4);
+        } else if (totalAciertos < 20) {
+          f1 = getAdaptiveFactor(0.75, 6, 2, 5);
+          f2 = getAdaptiveFactor(0.50, 6, 2, 5);
+        } else {
+          f1 = getAdaptiveFactor(0.85, 6, 3, 5);
+          f2 = getAdaptiveFactor(0.70, 6, 3, 5);
+        }
+
+        if (Math.random() < 0.5) {
+          num1 = f1; num2 = f2;
+        } else {
+          num1 = f2; num2 = f1;
+        }
+      }
+
+      document.getElementById("n1").textContent = num1;
+      document.getElementById("n2").textContent = num2;
+      currentVal = "";
+      updateDisplay();
+    }
+
+    function addNum(val) {
+      if (lives <= 0) return;
+      if (currentVal.length < 4) {
+        currentVal += val;
+        updateDisplay();
+      }
+    }
+
+    function clearInput() {
+      currentVal = "";
+      updateDisplay();
+    }
+
+    function updateDisplay() {
+      document.getElementById("display").textContent = currentVal;
+    }
+
+    function checkAnswer() {
+      if (currentVal === "" || lives <= 0 || busy) return;
+      busy = true;
+
+      const feedback = document.getElementById("feedback");
+      const result = parseInt(currentVal, 10);
+      const expected = num1 * num2;
+
+      // Limpia la respuesta al momento para evitar reenvíos con pulsaciones rápidas
+      currentVal = "";
+      updateDisplay();
+
+      if (result === expected) {
+        score++;
+        streak++;
+        totalAciertos++;
+        renderScore();
+        renderStreak();
+        updateLevelBadge();
+
+        let msg, cls;
+        if (streak % 10 === 0) {
+          if (lives < MAX_LIVES) {
+            lives++;
+            renderLives();
+            msg = `¡Racha de ${streak}! +1 Vida extra ❤️`;
+            cls = "feedback bonus";
+          } else {
+            msg = `¡Racha de ${streak}! Imparable 🔥`;
+            cls = "feedback correct";
+          }
+        } else {
+          msg = "¡Muy bien! 🎉";
+          cls = "feedback correct";
+        }
+        feedback.textContent = msg;
+        feedback.className = cls;
+
+        pendingTimer = setTimeout(() => {
+          feedback.textContent = "";
+          busy = false;
+          newOperation();
+        }, 850);
+
+      } else {
+        lives--;
+        streak = 0;
+
+        // Penalización: la puntuación se divide por 2
+        const penalty = Math.ceil(score / 2);
+        score = Math.max(0, score - penalty);
+
+        renderLives();
+        renderStreak();
+        renderScore();
+        failedQueue.push([num1, num2]);
+
+        if (lives <= 0) {
+          feedback.textContent = `Era ${expected} 😅`;
+          feedback.className = "feedback incorrect";
+          pendingTimer = setTimeout(() => {
+            document.getElementById("finalScore").textContent = score;
+            document.getElementById("gameOverModal").classList.add("show");
+          }, 1000);
+        } else {
+          const loss = penalty > 0 ? ` (-1❤️ y -${penalty}⭐)` : " (-1❤️)";
+          feedback.textContent = `Era ${expected}${loss}`;
+          feedback.className = "feedback incorrect";
+          pendingTimer = setTimeout(() => {
+            feedback.textContent = "";
+            busy = false;
+            newOperation();
+          }, 1300);
+        }
+      }
+    }
+
+    function resetGame() {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+      busy = false;
+      lives = 3;
+      score = 0;
+      streak = 0;
+      totalAciertos = 0;
+      failedQueue.length = 0;
+      renderScore();
+      renderLives();
+      renderStreak();
+      updateLevelBadge();
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("gameOverModal").classList.remove("show");
+      newOperation();
+    }
+
+    renderLives();
+    renderStreak();
+    renderScore();
+    newOperation();
+  </script>
+</body>
+
+</html>
