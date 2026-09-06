@@ -43,7 +43,7 @@
       display: flex;
       gap: 6px;
     }
-    .score-badge, .level-badge {
+    .score-badge, .level-badge, .streak-badge {
       background: #e2e8f0;
       padding: 4px 10px;
       border-radius: 999px;
@@ -53,6 +53,10 @@
     .level-badge {
       background: #fef3c7;
       color: #b45309;
+    }
+    .streak-badge {
+      background: #ffedd5;
+      color: #c2410c;
     }
     .question {
       font-size: 2.8rem;
@@ -152,6 +156,7 @@
   <div class="status-bar">
     <div class="lives" id="lives">❤️❤️❤️</div>
     <div class="badges">
+      <span class="streak-badge" id="streakBadge">🔥 <span id="streak">0</span></span>
       <span class="level-badge" id="level">Nvl 1</span>
       <span class="score-badge">⭐ <span id="score">0</span></span>
     </div>
@@ -184,7 +189,7 @@
 
   <div class="game-over-modal" id="gameOverModal">
     <h2>¡Fin de la partida! 💔</h2>
-    <p>Has conseguido <b id="finalScore">0</b> aciertos.</p>
+    <p>Has conseguido <b id="finalScore">0</b> puntos.</p>
     <button class="btn-restart" onclick="resetGame()">Jugar otra vez 🔁</button>
   </div>
 </div>
@@ -195,6 +200,7 @@
   let currentVal = "";
   let lives = 3;
   let score = 0;
+  let streak = 0;
   const MAX_LIVES = 5;
   const failedQueue = [];
 
@@ -224,10 +230,17 @@
     document.getElementById("lives").textContent = hearts;
   }
 
+  function renderScore() {
+    document.getElementById("score").textContent = score;
+  }
+
+  function renderStreak() {
+    document.getElementById("streak").textContent = streak;
+  }
+
   function newOperation() {
     updateLevelBadge();
 
-    // Reintenta operaciones falladas previamente (1 de cada 3 turnos si hay pendientes)
     if (failedQueue.length > 0 && Math.random() < 0.35) {
       const pair = failedQueue.shift();
       num1 = pair[0];
@@ -235,24 +248,19 @@
     } else {
       let f1, f2;
       if (score < 5) {
-        // Nivel 1: Tablas completas sin filtros
         f1 = randomInt(0, 10);
         f2 = randomInt(0, 10);
       } else if (score < 10) {
-        // Nivel 2: Eliminamos 0 y 1. 60% mayor de 4
         f1 = getAdaptiveFactor(0.60, 5, 2, 4);
         f2 = getAdaptiveFactor(0.40, 5, 2, 4);
       } else if (score < 20) {
-        // Nivel 3: Énfasis en tablas del 6 al 10 (75% y 50%)
         f1 = getAdaptiveFactor(0.75, 6, 2, 5);
         f2 = getAdaptiveFactor(0.50, 6, 2, 5);
       } else {
-        // Modo Experto: 85% tablas altas
         f1 = getAdaptiveFactor(0.85, 6, 3, 5);
         f2 = getAdaptiveFactor(0.70, 6, 3, 5);
       }
 
-      // Mezclar orden para que no sea siempre el primero el alto
       if (Math.random() < 0.5) {
         num1 = f1; num2 = f2;
       } else {
@@ -292,16 +300,18 @@
 
     if (result === expected) {
       score++;
-      document.getElementById("score").textContent = score;
+      streak++;
+      renderScore();
+      renderStreak();
 
-      if (score % 10 === 0) {
+      if (streak > 0 && streak % 10 === 0) {
         if (lives < MAX_LIVES) {
           lives++;
           renderLives();
-          feedback.textContent = "¡Racha de 10! +1 Vida ❤️";
+          feedback.textContent = `¡Racha de ${streak}! +1 Vida extra ❤️`;
           feedback.className = "feedback bonus";
         } else {
-          feedback.textContent = "¡Racha de 10! Imparable 🎉";
+          feedback.textContent = `¡Racha de ${streak}! Imparable 🔥`;
           feedback.className = "feedback correct";
         }
       } else {
@@ -316,7 +326,15 @@
 
     } else {
       lives--;
+      streak = 0;
+
+      // Penalización: resta la mitad de puntos redondeando hacia arriba
+      const penalty = Math.ceil(score / 2);
+      score = Math.max(0, score - penalty);
+
       renderLives();
+      renderStreak();
+      renderScore();
       failedQueue.push([num1, num2]);
 
       if (lives <= 0) {
@@ -327,14 +345,14 @@
           document.getElementById("gameOverModal").classList.add("show");
         }, 1000);
       } else {
-        feedback.textContent = `¡Casi! Era ${expected} (-1 ❤️)`;
+        feedback.textContent = `Era ${expected} (-1❤️ y -${penalty}⭐)`;
         feedback.className = "feedback incorrect";
         setTimeout(() => {
           currentVal = "";
           updateDisplay();
           feedback.textContent = "";
           newOperation();
-        }, 1200);
+        }, 1300);
       }
     }
   }
@@ -342,15 +360,19 @@
   function resetGame() {
     lives = 3;
     score = 0;
+    streak = 0;
     failedQueue.length = 0;
-    document.getElementById("score").textContent = score;
+    renderScore();
     renderLives();
+    renderStreak();
     document.getElementById("feedback").textContent = "";
     document.getElementById("gameOverModal").classList.remove("show");
     newOperation();
   }
 
   renderLives();
+  renderStreak();
+  renderScore();
   newOperation();
 </script>
 </body>
