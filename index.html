@@ -39,11 +39,20 @@
       font-size: 1.4rem;
       letter-spacing: 2px;
     }
-    .score-badge {
+    .badges {
+      display: flex;
+      gap: 6px;
+    }
+    .score-badge, .level-badge {
       background: #e2e8f0;
-      padding: 4px 12px;
+      padding: 4px 10px;
       border-radius: 999px;
-      font-size: 0.95rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .level-badge {
+      background: #fef3c7;
+      color: #b45309;
     }
     .question {
       font-size: 2.8rem;
@@ -111,7 +120,6 @@
     .incorrect { color: #dc2626; }
     .bonus { color: #ea580c; }
 
-    /* Pantalla de Fin de Partida */
     .game-over-modal {
       display: none;
       position: absolute;
@@ -124,19 +132,9 @@
       align-items: center;
       gap: 16px;
     }
-    .game-over-modal.show {
-      display: flex;
-    }
-    .game-over-modal h2 {
-      margin: 0;
-      font-size: 2rem;
-      color: #dc2626;
-    }
-    .game-over-modal p {
-      margin: 0;
-      font-size: 1.2rem;
-      color: #475569;
-    }
+    .game-over-modal.show { display: flex; }
+    .game-over-modal h2 { margin: 0; font-size: 2rem; color: #dc2626; }
+    .game-over-modal p { margin: 0; font-size: 1.2rem; color: #475569; }
     .btn-restart {
       background: #3b82f6;
       color: white;
@@ -145,18 +143,18 @@
       font-size: 1.2rem;
       margin-top: 8px;
     }
-    .btn-restart:active {
-      box-shadow: 0 1px #2563eb;
-    }
+    .btn-restart:active { box-shadow: 0 1px #2563eb; }
   </style>
 </head>
 <body>
 
 <div class="card">
-  <!-- Barra de estado: Vidas y Puntuación -->
   <div class="status-bar">
     <div class="lives" id="lives">❤️❤️❤️</div>
-    <div class="score-badge">⭐ <span id="score">0</span> aciertos</div>
+    <div class="badges">
+      <span class="level-badge" id="level">Nvl 1</span>
+      <span class="score-badge">⭐ <span id="score">0</span></span>
+    </div>
   </div>
 
   <div class="question">
@@ -184,7 +182,6 @@
 
   <div class="feedback" id="feedback"></div>
 
-  <!-- Pantalla de Game Over -->
   <div class="game-over-modal" id="gameOverModal">
     <h2>¡Fin de la partida! 💔</h2>
     <p>Has conseguido <b id="finalScore">0</b> aciertos.</p>
@@ -199,6 +196,27 @@
   let lives = 3;
   let score = 0;
   const MAX_LIVES = 5;
+  const failedQueue = [];
+
+  function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function getAdaptiveFactor(probHigh, minHigh, minLow, maxLow) {
+    if (Math.random() < probHigh) {
+      return randomInt(minHigh, 10);
+    } else {
+      return randomInt(minLow, maxLow);
+    }
+  }
+
+  function updateLevelBadge() {
+    const levelEl = document.getElementById("level");
+    if (score < 5) levelEl.textContent = "Nvl 1";
+    else if (score < 10) levelEl.textContent = "Nvl 2";
+    else if (score < 20) levelEl.textContent = "Nvl 3";
+    else levelEl.textContent = "Pro 🔥";
+  }
 
   function renderLives() {
     let hearts = "";
@@ -207,8 +225,41 @@
   }
 
   function newOperation() {
-    num1 = Math.floor(Math.random() * 11);
-    num2 = Math.floor(Math.random() * 11);
+    updateLevelBadge();
+
+    // Reintenta operaciones falladas previamente (1 de cada 3 turnos si hay pendientes)
+    if (failedQueue.length > 0 && Math.random() < 0.35) {
+      const pair = failedQueue.shift();
+      num1 = pair[0];
+      num2 = pair[1];
+    } else {
+      let f1, f2;
+      if (score < 5) {
+        // Nivel 1: Tablas completas sin filtros
+        f1 = randomInt(0, 10);
+        f2 = randomInt(0, 10);
+      } else if (score < 10) {
+        // Nivel 2: Eliminamos 0 y 1. 60% mayor de 4
+        f1 = getAdaptiveFactor(0.60, 5, 2, 4);
+        f2 = getAdaptiveFactor(0.40, 5, 2, 4);
+      } else if (score < 20) {
+        // Nivel 3: Énfasis en tablas del 6 al 10 (75% y 50%)
+        f1 = getAdaptiveFactor(0.75, 6, 2, 5);
+        f2 = getAdaptiveFactor(0.50, 6, 2, 5);
+      } else {
+        // Modo Experto: 85% tablas altas
+        f1 = getAdaptiveFactor(0.85, 6, 3, 5);
+        f2 = getAdaptiveFactor(0.70, 6, 3, 5);
+      }
+
+      // Mezclar orden para que no sea siempre el primero el alto
+      if (Math.random() < 0.5) {
+        num1 = f1; num2 = f2;
+      } else {
+        num1 = f2; num2 = f1;
+      }
+    }
+
     document.getElementById("n1").textContent = num1;
     document.getElementById("n2").textContent = num2;
     currentVal = "";
@@ -243,15 +294,14 @@
       score++;
       document.getElementById("score").textContent = score;
 
-      // Cada 10 aciertos suma una vida extra
       if (score % 10 === 0) {
         if (lives < MAX_LIVES) {
           lives++;
           renderLives();
-          feedback.textContent = "¡Racha de 10! +1 Vida extra ❤️";
+          feedback.textContent = "¡Racha de 10! +1 Vida ❤️";
           feedback.className = "feedback bonus";
         } else {
-          feedback.textContent = "¡Increíble racha de 10! 🎉";
+          feedback.textContent = "¡Racha de 10! Imparable 🎉";
           feedback.className = "feedback correct";
         }
       } else {
@@ -262,11 +312,12 @@
       setTimeout(() => {
         feedback.textContent = "";
         newOperation();
-      }, 900);
+      }, 850);
 
     } else {
       lives--;
       renderLives();
+      failedQueue.push([num1, num2]);
 
       if (lives <= 0) {
         feedback.textContent = `Era ${expected} 😅`;
@@ -276,13 +327,14 @@
           document.getElementById("gameOverModal").classList.add("show");
         }, 1000);
       } else {
-        feedback.textContent = `¡Casi! Pierdes 1 vida (-1 ❤️)`;
+        feedback.textContent = `¡Casi! Era ${expected} (-1 ❤️)`;
         feedback.className = "feedback incorrect";
         setTimeout(() => {
           currentVal = "";
           updateDisplay();
           feedback.textContent = "";
-        }, 1100);
+          newOperation();
+        }, 1200);
       }
     }
   }
@@ -290,6 +342,7 @@
   function resetGame() {
     lives = 3;
     score = 0;
+    failedQueue.length = 0;
     document.getElementById("score").textContent = score;
     renderLives();
     document.getElementById("feedback").textContent = "";
@@ -297,7 +350,6 @@
     newOperation();
   }
 
-  // Inicialización
   renderLives();
   newOperation();
 </script>
