@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aprende a Multiplicar</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #f0f4f8;
+      touch-action: manipulation;
+    }
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .question {
+      font-size: 2.8rem;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 10px 0 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+    }
+    .answer-box {
+      font-size: 2rem;
+      font-weight: 700;
+      min-height: 54px;
+      background: #f8fafc;
+      border: 3px solid #cbd5e1;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      color: #0f172a;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    button {
+      font-size: 1.6rem;
+      font-weight: 600;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      background: #e2e8f0;
+      color: #334155;
+      cursor: pointer;
+      box-shadow: 0 4px #cbd5e1;
+    }
+    button:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px #cbd5e1;
+    }
+    button.clear {
+      background: #fee2e2;
+      color: #dc2626;
+      box-shadow: 0 4px #fca5a5;
+    }
+    button.clear:active { box-shadow: 0 1px #fca5a5; }
+    button.check {
+      background: #dcfce7;
+      color: #16a34a;
+      box-shadow: 0 4px #86efac;
+    }
+    button.check:active { box-shadow: 0 1px #86efac; }
+    .feedback {
+      height: 28px;
+      margin-top: 18px;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .correct { color: #16a34a; }
+    .incorrect { color: #dc2626; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="question">
+    <span id="n1">0</span>
+    <span>×</span>
+    <span id="n2">0</span>
+  </div>
+
+  <div class="answer-box" id="display"></div>
+
+  <div class="grid">
+    <button onclick="addNum('1')">1</button>
+    <button onclick="addNum('2')">2</button>
+    <button onclick="addNum('3')">3</button>
+    <button onclick="addNum('4')">4</button>
+    <button onclick="addNum('5')">5</button>
+    <button onclick="addNum('6')">6</button>
+    <button onclick="addNum('7')">7</button>
+    <button onclick="addNum('8')">8</button>
+    <button onclick="addNum('9')">9</button>
+    <button class="clear" onclick="clearInput()">✕</button>
+    <button onclick="addNum('0')">0</button>
+    <button class="check" onclick="checkAnswer()">✓</button>
+  </div>
+
+  <div class="feedback" id="feedback"></div>
+</div>
+
+<script>
+  let num1 = 0;
+  let num2 = 0;
+  let currentVal = "";
+
+  function newOperation() {
+    num1 = Math.floor(Math.random() * 11);
+    num2 = Math.floor(Math.random() * 11);
+    document.getElementById("n1").textContent = num1;
+    document.getElementById("n2").textContent = num2;
+    currentVal = "";
+    updateDisplay();
+  }
+
+  function addNum(val) {
+    if (currentVal.length < 4) {
+      currentVal += val;
+      updateDisplay();
+    }
+  }
+
+  function clearInput() {
+    currentVal = "";
+    updateDisplay();
+  }
+
+  function updateDisplay() {
+    document.getElementById("display").textContent = currentVal;
+  }
+
+  function checkAnswer() {
+    if (currentVal === "") return;
+
+    const feedback = document.getElementById("feedback");
+    const result = parseInt(currentVal, 10);
+    const expected = num1 * num2;
+
+    if (result === expected) {
+      feedback.textContent = "¡Muy bien! 🎉";
+      feedback.className = "feedback correct";
+      setTimeout(() => {
+        feedback.textContent = "";
+        newOperation();
+      }, 900);
+    } else {
+      feedback.textContent = "¡Inténtalo de nuevo!";
+      feedback.className = "feedback incorrect";
+      setTimeout(() => {
+        currentVal = "";
+        updateDisplay();
+        feedback.textContent = "";
+      }, 1000);
+    }
+  }
+
+  newOperation();
+</script>
+</body>
+</html>
