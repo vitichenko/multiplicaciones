@@ -663,26 +663,18 @@
         return Math.random() < 0.5 ? { a: f1, b: f2 } : { a: f2, b: f1 };
       }
 
-      // Suma y resta: estrictamente hasta 2 cifras (máximo 99 tanto en operandos como en resultado)
+      // Suma y resta: operandos de máximo 2 cifras (máximo 99, nunca 125 + 553).
+      // En la suma el resultado sí puede tener 3 cifras (ej. 65 + 55 = 120).
       if (mode === "+") {
-        if (n === 0) {
-          return { a: randomInt(0, 10), b: randomInt(0, 10) }; // Resultado <= 20
-        } else if (n === 1) {
-          return { a: randomInt(5, 30), b: randomInt(1, 30) }; // Resultado <= 60
-        } else if (n === 2) {
-          const a = randomInt(10, 50);
-          const b = randomInt(5, 80 - a);
-          return Math.random() < 0.5 ? { a, b } : { a: b, b: a }; // Resultado <= 80
-        } else {
-          // Nivel Pro: sumas de 2 cifras con resultado garantizado <= 99 (nunca 3 cifras)
-          const a = randomInt(10, 89);
-          const b = randomInt(10, 99 - a);
-          return Math.random() < 0.5 ? { a, b } : { a: b, b: a };
-        }
+        const topes = [10, 30, 60, 99];
+        const minVal = [0, 5, 10, 15][n];
+        const a = randomInt(minVal, topes[n]);
+        const b = randomInt(minVal, topes[n]);
+        return { a, b };
       }
 
       if (mode === "-") {
-        // Resta con resultado siempre >= 0 y minuendo <= 99 (nunca 3 cifras)
+        // Minuendo y sustraendo de máximo 2 cifras (<= 99) y resultado siempre >= 0
         const topes = [10, 30, 60, 99];
         const minA = [0, 5, 10, 15][n];
         const a = randomInt(minA, topes[n]);
