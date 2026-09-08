@@ -527,17 +527,50 @@
       return 3;
     }
 
-    // Tiempo límite según nivel y complejidad
+    // Tiempo límite según la complejidad real de la operación concreta:
+    // Cálculos inmediatos/triviales (ej. 7x1, x0, x10) requieren respuesta rápida (7s-8s).
+    // Operaciones complejas (ej. 9x6, tablas altas, números grandes) dan más margen para razonar (14s-15s).
     function calcularTiempoLimite() {
-      const n = nivelDificultad();
-      const tiemposBase = [15, 12, 10, 8]; // segundos para Nvl 1, Nvl 2, Nvl 3 y Pro
-      let segundos = tiemposBase[n];
+      let segundos = 10;
 
-      // Margen extra de +2s para operaciones con números de 2 cifras o divisiones
-      if ((mode === "+" || mode === "-") && n >= 2) {
-        segundos += 2;
-      } else if (mode === "÷" && n >= 2) {
-        segundos += 2;
+      if (mode === "×") {
+        const min = Math.min(num1, num2);
+        const max = Math.max(num1, num2);
+        if (min <= 1 || max === 10) {
+          segundos = 7; // Trivial: x0, x1, x10 (ej. 7x1)
+        } else if (max <= 5) {
+          segundos = 9; // Tablas básicas bajas (ej. 3x4, 2x5)
+        } else if (min <= 5) {
+          segundos = 11; // Mixto: un factor alto y uno bajo (ej. 4x8, 5x7)
+        } else {
+          segundos = 14; // Tablas altas difíciles (ej. 9x6, 7x8, 8x6)
+        }
+      } else if (mode === "+") {
+        const suma = num1 + num2;
+        if (num1 <= 10 && num2 <= 10) {
+          segundos = 8; // Suma de dígitos simples
+        } else if (suma <= 35) {
+          segundos = 11; // Suma moderada
+        } else {
+          segundos = 15; // Suma de números grandes / cálculo mental complejo
+        }
+      } else if (mode === "-") {
+        if (num1 <= 10) {
+          segundos = 8; // Resta básica de una cifra
+        } else if (num1 <= 35) {
+          segundos = 11; // Resta intermedia
+        } else {
+          segundos = 15; // Resta con números grandes
+        }
+      } else if (mode === "÷") {
+        const cociente = num2 > 0 ? Math.floor(num1 / num2) : 1;
+        if (num2 <= 2 || cociente <= 2) {
+          segundos = 8; // División básica entre 2 o cociente muy bajo
+        } else if (num2 <= 5 && cociente <= 5) {
+          segundos = 11; // División intermedia
+        } else {
+          segundos = 14; // División avanzada (ej. 56÷7, 72÷8)
+        }
       }
 
       return segundos * 1000;
