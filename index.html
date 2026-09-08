@@ -663,21 +663,36 @@
         return Math.random() < 0.5 ? { a: f1, b: f2 } : { a: f2, b: f1 };
       }
 
-      // Suma y resta: números de 0 a 100 según el nivel
-      if (mode === "+" || mode === "-") {
-        const tope = [10, 30, 60, 100][n];
-        if (mode === "+") {
-          return { a: randomInt(0, tope), b: randomInt(0, tope) };
+      // Suma y resta: estrictamente hasta 2 cifras (máximo 99 tanto en operandos como en resultado)
+      if (mode === "+") {
+        if (n === 0) {
+          return { a: randomInt(0, 10), b: randomInt(0, 10) }; // Resultado <= 20
+        } else if (n === 1) {
+          return { a: randomInt(5, 30), b: randomInt(1, 30) }; // Resultado <= 60
+        } else if (n === 2) {
+          const a = randomInt(10, 50);
+          const b = randomInt(5, 80 - a);
+          return Math.random() < 0.5 ? { a, b } : { a: b, b: a }; // Resultado <= 80
+        } else {
+          // Nivel Pro: sumas de 2 cifras con resultado garantizado <= 99 (nunca 3 cifras)
+          const a = randomInt(10, 89);
+          const b = randomInt(10, 99 - a);
+          return Math.random() < 0.5 ? { a, b } : { a: b, b: a };
         }
-        // Resta con resultado siempre >= 0
-        const a = randomInt(0, tope);
+      }
+
+      if (mode === "-") {
+        // Resta con resultado siempre >= 0 y minuendo <= 99 (nunca 3 cifras)
+        const topes = [10, 30, 60, 99];
+        const minA = [0, 5, 10, 15][n];
+        const a = randomInt(minA, topes[n]);
         for (let i = 0; i < 5; i++) {
           const b = randomInt(0, a);
           if (n < 2 || (a - b !== 0 && a - b !== a)) {
-            return { a: a, b: b };
+            return { a, b };
           }
         }
-        return { a: a, b: randomInt(0, a) };
+        return { a, b: randomInt(0, a) };
       }
 
       // División entera: dividendo = divisor x cociente (respuesta = cociente)
