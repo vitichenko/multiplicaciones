@@ -100,6 +100,37 @@
       text-align: center;
     }
 
+    .timer-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 4px 10px;
+    }
+
+    .timer-track {
+      flex: 1;
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .timer-bar {
+      height: 100%;
+      width: 100%;
+      background: #22c55e;
+      border-radius: 999px;
+      transition: width 0.08s linear, background-color 0.2s ease;
+    }
+
+    .timer-label {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #64748b;
+      min-width: 48px;
+      text-align: right;
+    }
+
     .badges {
       display: flex;
       gap: 6px;
@@ -285,6 +316,13 @@
 
     <div class="record-line">🏆 Máxima puntuación <span id="recordMode">×</span>: <span id="record">0</span></div>
 
+    <div class="timer-container">
+      <div class="timer-track">
+        <div class="timer-bar" id="timerBar"></div>
+      </div>
+      <span class="timer-label" id="timerLabel">⏱️ 15s</span>
+    </div>
+
     <div class="question">
       <span id="n1">0</span>
       <span id="opSign">×</span>
@@ -331,6 +369,91 @@
     let pendingTimer = null;
     const MAX_LIVES = 5;
     const failedQueue = [];
+
+    // Temporizador
+    let timerId = null;
+    let timerTotalMs = 0;
+    let timerRemainingMs = 0;
+    let timerLastTick = 0;
+
+    // Estado independiente por cada modo de juego
+    const MODES = ["×", "+", "-", "÷"];
+    const CLAVE_ESTADOS = "multi_estados_modos";
+
+    function crearEstadoInicial() {
+      return {
+        lives: 3,
+        score: 0,
+        streak: 0,
+        totalAciertos: 0,
+        num1: null,
+        num2: null,
+        failedQueue: [],
+        gameOver: false
+      };
+    }
+
+    function cargarEstadosGuardados() {
+      try {
+        const data = localStorage.getItem(CLAVE_ESTADOS);
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (parsed && typeof parsed === "object") {
+            const estados = {};
+            for (const m of MODES) {
+              if (parsed[m] && typeof parsed[m].lives === "number") {
+                estados[m] = parsed[m];
+              } else {
+                estados[m] = crearEstadoInicial();
+              }
+            }
+            return estados;
+          }
+        }
+      } catch (e) {}
+      return {
+        "×": crearEstadoInicial(),
+        "+": crearEstadoInicial(),
+        "-": crearEstadoInicial(),
+        "÷": crearEstadoInicial()
+      };
+    }
+
+    const modoEstados = cargarEstadosGuardados();
+
+    function guardarEstadosEnStorage() {
+      try {
+        localStorage.setItem(CLAVE_ESTADOS, JSON.stringify(modoEstados));
+      } catch (e) {}
+    }
+
+    function cargarEstadoModo(m) {
+      const est = modoEstados[m];
+      num1 = est.num1;
+      num2 = est.num2;
+      lives = est.lives;
+      score = est.score;
+      streak = est.streak;
+      totalAciertos = est.totalAciertos;
+      failedQueue.length = 0;
+      if (Array.isArray(est.failedQueue)) {
+        failedQueue.push(...est.failedQueue);
+      }
+    }
+
+    function guardarEstadoModo(m) {
+      modoEstados[m] = {
+        lives,
+        score,
+        streak,
+        totalAciertos,
+        num1,
+        num2,
+        failedQueue: [...failedQueue],
+        gameOver: lives <= 0
+      };
+      guardarEstadosEnStorage();
+    }
 
     function randomInt(min, max) {
       return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -402,6 +525,87 @@
       if (totalAciertos < 10) return 1;
       if (totalAciertos < 20) return 2;
       return 3;
+    }
+
+    // Tiempo límite según nivel y complejidad
+    function calcularTiempoLimite() {
+      const n = nivelDificultad();
+      const tiemposBase = [15, 12, 10, 8]; // segundos para Nvl 1, Nvl 2, Nvl 3 y Pro
+      let segundos = tiemposBase[n];
+
+      // Margen extra de +2s para operaciones con números de 2 cifras o divisiones
+      if ((mode === "+" || mode === "-") && n >= 2) {
+        segundos += 2;
+      } else if (mode === "÷" && n >= 2) {
+        segundos += 2;
+      }
+
+      return segundos * 1000;
+    }
+
+    function renderTimerBar(fraction) {
+      const bar = document.getElementById("timerBar");
+      const label = document.getElementById("timerLabel");
+      if (!bar) return;
+
+      const percent = Math.max(0, Math.min(100, fraction * 100));
+      bar.style.width = percent + "%";
+
+      const sec = Math.ceil(timerRemainingMs / 1000);
+      if (label) {
+        label.textContent = `⏱️ ${Math.max(0, sec)}s`;
+        if (percent <= 18) {
+          label.style.color = "#ef4444";
+        } else if (percent <= 35) {
+          label.style.color = "#d97706";
+        } else {
+          label.style.color = "#64748b";
+        }
+      }
+
+      if (percent > 35) {
+        bar.style.background = "#22c55e";
+      } else if (percent > 18) {
+        bar.style.background = "#f59e0b";
+      } else {
+        bar.style.background = "#ef4444";
+      }
+    }
+
+    function iniciarTemporizador() {
+      detenerTemporizador();
+      if (lives <= 0) {
+        renderTimerBar(0);
+        return;
+      }
+
+      timerTotalMs = calcularTiempoLimite();
+      timerRemainingMs = timerTotalMs;
+      timerLastTick = Date.now();
+      renderTimerBar(1);
+
+      timerId = setInterval(() => {
+        const now = Date.now();
+        const delta = now - timerLastTick;
+        timerLastTick = now;
+        timerRemainingMs -= delta;
+
+        if (timerRemainingMs <= 0) {
+          detenerTemporizador();
+          timerRemainingMs = 0;
+          renderTimerBar(0);
+          tiempoAgotado();
+        } else {
+          renderTimerBar(timerRemainingMs / timerTotalMs);
+        }
+      }, 50);
+    }
+
+    function detenerTemporizador() {
+      if (timerId !== null) {
+        clearInterval(timerId);
+        timerId = null;
+      }
     }
 
     // Devuelve una operación {a, b} del modo activo: "a op b = resultado"
@@ -476,14 +680,22 @@
       document.getElementById("n2").textContent = num2;
       currentVal = "";
       updateDisplay();
+
+      guardarEstadoModo(mode);
+      iniciarTemporizador();
     }
 
-    // Cambiar de operación: partida nueva y récord propio de ese modo
+    // Cambiar de operación: se recupera el estado individual de ese modo
     function elegirModo(m) {
       if (m === mode) return;
+
+      // Guardar el estado del modo actual antes de cambiar
+      guardarEstadoModo(mode);
+      detenerTemporizador();
       clearTimeout(pendingTimer);
       pendingTimer = null;
       busy = false;
+
       mode = m;
 
       const botones = document.querySelectorAll(".mode-bar button");
@@ -491,11 +703,7 @@
         btn.classList.toggle("active", btn.dataset.mode === m);
       }
 
-      lives = 3;
-      score = 0;
-      streak = 0;
-      totalAciertos = 0;
-      failedQueue.length = 0;
+      cargarEstadoModo(mode);
       record = loadRecord(mode);
 
       renderScore();
@@ -504,12 +712,29 @@
       updateLevelBadge();
       renderRecord();
       document.getElementById("feedback").textContent = "";
-      document.getElementById("gameOverModal").classList.remove("show");
-      newOperation();
+      currentVal = "";
+      updateDisplay();
+
+      const modal = document.getElementById("gameOverModal");
+      if (modoEstados[mode].gameOver || lives <= 0) {
+        document.getElementById("finalScore").textContent = score;
+        modal.classList.add("show");
+        renderTimerBar(0);
+      } else {
+        modal.classList.remove("show");
+        if (num1 === null || num2 === null) {
+          newOperation();
+        } else {
+          document.getElementById("opSign").textContent = mode;
+          document.getElementById("n1").textContent = num1;
+          document.getElementById("n2").textContent = num2;
+          iniciarTemporizador();
+        }
+      }
     }
 
     function addNum(val) {
-      if (lives <= 0) return;
+      if (lives <= 0 || busy) return;
       if (currentVal.length < 4) {
         currentVal += val;
         updateDisplay();
@@ -517,6 +742,7 @@
     }
 
     function clearInput() {
+      if (busy) return;
       currentVal = "";
       updateDisplay();
     }
@@ -525,9 +751,54 @@
       document.getElementById("display").textContent = currentVal;
     }
 
+    // Manejo cuando el temporizador llega a cero
+    function tiempoAgotado() {
+      if (lives <= 0 || busy) return;
+      busy = true;
+      detenerTemporizador();
+
+      const feedback = document.getElementById("feedback");
+      const expected = resolverResultado();
+
+      currentVal = "";
+      updateDisplay();
+
+      lives--;
+      streak = 0;
+
+      const penalty = Math.ceil(score / 2);
+      score = Math.max(0, score - penalty);
+
+      renderLives();
+      renderStreak();
+      renderScore();
+      failedQueue.push({ m: mode, a: num1, b: num2 });
+      guardarEstadoModo(mode);
+
+      if (lives <= 0) {
+        feedback.textContent = `¡Tiempo! Era ${expected} 😅`;
+        feedback.className = "feedback incorrect";
+        pendingTimer = setTimeout(() => {
+          document.getElementById("finalScore").textContent = score;
+          document.getElementById("gameOverModal").classList.add("show");
+        }, 1000);
+      } else {
+        const loss = penalty > 0 ? ` (-1❤️ y -${penalty}⭐)` : " (-1❤️)";
+        feedback.textContent = `¡Tiempo agotado! ⏱️${loss}`;
+        feedback.className = "feedback incorrect";
+        pendingTimer = setTimeout(() => {
+          feedback.textContent = "";
+          busy = false;
+          // Se mantiene la misma operación y se reinicia el tiempo
+          iniciarTemporizador();
+        }, 1100);
+      }
+    }
+
     function checkAnswer() {
       if (currentVal === "" || lives <= 0 || busy) return;
       busy = true;
+      detenerTemporizador();
 
       const feedback = document.getElementById("feedback");
       const result = parseInt(currentVal, 10);
@@ -570,6 +841,8 @@
         feedback.textContent = msg;
         feedback.className = cls;
 
+        guardarEstadoModo(mode);
+
         pendingTimer = setTimeout(() => {
           feedback.textContent = "";
           busy = false;
@@ -588,6 +861,7 @@
         renderStreak();
         renderScore();
         failedQueue.push({ m: mode, a: num1, b: num2 });
+        guardarEstadoModo(mode);
 
         if (lives <= 0) {
           feedback.textContent = `Era ${expected} 😅`;
@@ -597,14 +871,16 @@
             document.getElementById("gameOverModal").classList.add("show");
           }, 1000);
         } else {
+          // No se revela la solución para que tenga que calcularla y resolverla
           const loss = penalty > 0 ? ` (-1❤️ y -${penalty}⭐)` : " (-1❤️)";
-          feedback.textContent = `Era ${expected}${loss}`;
+          feedback.textContent = `¡Casi! Vuelve a intentarlo${loss}`;
           feedback.className = "feedback incorrect";
           pendingTimer = setTimeout(() => {
             feedback.textContent = "";
             busy = false;
-            newOperation();
-          }, 1300);
+            // Se mantiene la misma operación y se reinicia el tiempo
+            iniciarTemporizador();
+          }, 1000);
         }
       }
     }
@@ -613,26 +889,72 @@
       clearTimeout(pendingTimer);
       pendingTimer = null;
       busy = false;
-      lives = 3;
-      score = 0;
-      streak = 0;
-      totalAciertos = 0;
-      failedQueue.length = 0;
+      detenerTemporizador();
+
+      modoEstados[mode] = crearEstadoInicial();
+      guardarEstadosEnStorage();
+      cargarEstadoModo(mode);
+
       renderScore();
       renderLives();
       renderStreak();
       updateLevelBadge();
+      renderRecord();
       document.getElementById("feedback").textContent = "";
       document.getElementById("gameOverModal").classList.remove("show");
       newOperation();
     }
 
+    // Pausar el temporizador si la pestaña pierde el foco o se apaga la pantalla
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        detenerTemporizador();
+      } else if (lives > 0 && !busy && !modoEstados[mode].gameOver) {
+        timerLastTick = Date.now();
+        if (timerRemainingMs > 0 && timerId === null) {
+          timerId = setInterval(() => {
+            const now = Date.now();
+            const delta = now - timerLastTick;
+            timerLastTick = now;
+            timerRemainingMs -= delta;
+
+            if (timerRemainingMs <= 0) {
+              detenerTemporizador();
+              timerRemainingMs = 0;
+              renderTimerBar(0);
+              tiempoAgotado();
+            } else {
+              renderTimerBar(timerRemainingMs / timerTotalMs);
+            }
+          }, 50);
+        }
+      }
+    });
+
+    cargarEstadoModo(mode);
     record = loadRecord(mode);
     renderLives();
     renderStreak();
     renderScore();
+    updateLevelBadge();
     renderRecord();
-    newOperation();
+
+    const initialModal = document.getElementById("gameOverModal");
+    if (modoEstados[mode].gameOver || lives <= 0) {
+      document.getElementById("finalScore").textContent = score;
+      initialModal.classList.add("show");
+      renderTimerBar(0);
+    } else {
+      initialModal.classList.remove("show");
+      if (num1 === null || num2 === null) {
+        newOperation();
+      } else {
+        document.getElementById("opSign").textContent = mode;
+        document.getElementById("n1").textContent = num1;
+        document.getElementById("n2").textContent = num2;
+        iniciarTemporizador();
+      }
+    }
   </script>
 </body>
 
